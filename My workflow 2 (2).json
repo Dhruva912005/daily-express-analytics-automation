@@ -1,0 +1,863 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "daily-express-dashboard",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "76f06935-3795-4183-83e8-97047e1782f2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1744,
+        -416
+      ],
+      "webhookId": "c4f5f0b7-41d5-445b-aa9f-8fa2f6318870"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "6cY1P5HjWaWmbpSe",
+          "mode": "list",
+          "cachedResultName": "Data",
+          "cachedResultUrl": "/projects/SQqB1gEEJgivzLp3/datatables/6cY1P5HjWaWmbpSe"
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "id",
+        "orderByDirection": "ASC"
+      },
+      "id": "121a3f41-8545-4128-8ef0-58bc6002650f",
+      "name": "Get row(s)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -1424,
+        -416
+      ]
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# ============================================\n# DAILY EXPRESS - DATA CLEANING\n# n8n Code in Python\n# Run Once for All Items\n# ============================================\n\nitems = _items\n\ncleaned_data = []\nseen = set()\n\n\n# --------------------------------------------\n# 1. TEXT CLEANING\n# --------------------------------------------\n\ndef clean_text(value):\n\n    if value is None:\n        return None\n\n    value = str(value).strip()\n\n    # Remove extra spaces\n    while \"  \" in value:\n        value = value.replace(\"  \", \" \")\n\n    if value == \"\":\n        return None\n\n    return value.lower()\n\n\n# --------------------------------------------\n# 2. EMAIL VALIDATION\n# --------------------------------------------\n\ndef clean_email(value):\n\n    value = clean_text(value)\n\n    if value is None:\n        return None, False\n\n    # Email should not contain spaces\n    if \" \" in value:\n        return value, False\n\n    # Exactly one @\n    if value.count(\"@\") != 1:\n        return value, False\n\n    parts = value.split(\"@\")\n\n    username = parts[0]\n    domain = parts[1]\n\n    # Username/domain cannot be empty\n    if username == \"\" or domain == \"\":\n        return value, False\n\n    # Domain should contain .\n    if \".\" not in domain:\n        return value, False\n\n    # Domain cannot start/end with .\n    if domain.startswith(\".\") or domain.endswith(\".\"):\n        return value, False\n\n    return value, True\n\n\n# --------------------------------------------\n# 3. DATE CLEANING & VALIDATION\n# --------------------------------------------\n\ndef clean_date(value):\n\n    if value is None:\n        return None, False\n\n    value = str(value).strip()\n\n    if value == \"\":\n        return None, False\n\n\n    # ----------------------------------------\n    # Handle n8n ISO datetime\n    # Example:\n    # 2026-09-19T00:00:00.000Z\n    # ----------------------------------------\n\n    if \"T\" in value:\n\n        value = value.split(\"T\")[0]\n\n\n    # Keep only date part if required\n    if len(value) >= 10:\n\n        possible_date = value[:10]\n\n        if (\n            len(possible_date) == 10\n            and possible_date[4] == \"-\"\n            and possible_date[7] == \"-\"\n        ):\n\n            value = possible_date\n\n\n    # ----------------------------------------\n    # Convert separators\n    # ----------------------------------------\n\n    value = value.replace(\"/\", \"-\")\n    value = value.replace(\".\", \"-\")\n\n\n    parts = value.split(\"-\")\n\n    if len(parts) != 3:\n\n        return value, False\n\n\n    # ----------------------------------------\n    # YYYY-MM-DD\n    # ----------------------------------------\n\n    if len(parts[0]) == 4:\n\n        year = parts[0]\n        month = parts[1]\n        day = parts[2]\n\n\n    # ----------------------------------------\n    # DD-MM-YYYY\n    # ----------------------------------------\n\n    elif len(parts[2]) == 4:\n\n        day = parts[0]\n        month = parts[1]\n        year = parts[2]\n\n\n    else:\n\n        return value, False\n\n\n    # ----------------------------------------\n    # Numeric validation\n    # ----------------------------------------\n\n    if not year.isdigit():\n        return value, False\n\n    if not month.isdigit():\n        return value, False\n\n    if not day.isdigit():\n        return value, False\n\n\n    year = int(year)\n    month = int(month)\n    day = int(day)\n\n\n    # ----------------------------------------\n    # Year validation\n    # ----------------------------------------\n\n    if year < 1900 or year > 2100:\n\n        return value, False\n\n\n    # ----------------------------------------\n    # Month validation\n    # ----------------------------------------\n\n    if month < 1 or month > 12:\n\n        return value, False\n\n\n    # ----------------------------------------\n    # Days validation\n    # ----------------------------------------\n\n    days_in_month = {\n        1: 31,\n        2: 29,\n        3: 31,\n        4: 30,\n        5: 31,\n        6: 30,\n        7: 31,\n        8: 31,\n        9: 30,\n        10: 31,\n        11: 30,\n        12: 31\n    }\n\n\n    # February\n    if month == 2:\n\n        # Leap year\n        if day == 29:\n\n            if not (\n                year % 400 == 0\n                or (\n                    year % 4 == 0\n                    and year % 100 != 0\n                )\n            ):\n\n                return value, False\n\n        elif day > 28:\n\n            return value, False\n\n\n    # Other months\n    else:\n\n        if day > days_in_month[month]:\n\n            return value, False\n\n\n    if day < 1:\n\n        return value, False\n\n\n    # ----------------------------------------\n    # Standard date\n    # ----------------------------------------\n\n    formatted_date = (\n        str(year).zfill(4)\n        + \"-\"\n        + str(month).zfill(2)\n        + \"-\"\n        + str(day).zfill(2)\n    )\n\n    return formatted_date, True\n\n\n# --------------------------------------------\n# 4. ALLOWED DEPARTMENTS\n# --------------------------------------------\n\nallowed_departments = {\n\n    \"sales\": \"sales\",\n    \"marketing\": \"marketing\",\n    \"advertising\": \"advertising\",\n    \"editorial\": \"editorial\",\n    \"circulation\": \"circulation\",\n    \"digital\": \"digital\",\n    \"finance\": \"finance\"\n\n}\n\n\n# --------------------------------------------\n# 5. STATE STANDARDIZATION\n# --------------------------------------------\n\nstate_mapping = {\n\n    \"mp\": \"madhya pradesh\",\n    \"m.p\": \"madhya pradesh\",\n    \"m.p.\": \"madhya pradesh\",\n    \"madhya pradesh\": \"madhya pradesh\",\n\n    \"up\": \"uttar pradesh\",\n    \"u.p\": \"uttar pradesh\",\n    \"u.p.\": \"uttar pradesh\",\n    \"uttar pradesh\": \"uttar pradesh\",\n\n    \"mh\": \"maharashtra\",\n    \"maharashtra\": \"maharashtra\",\n\n    \"rj\": \"rajasthan\",\n    \"rajasthan\": \"rajasthan\",\n\n    \"gj\": \"gujarat\",\n    \"gujarat\": \"gujarat\",\n\n    \"dl\": \"delhi\",\n    \"delhi\": \"delhi\",\n\n    \"hr\": \"haryana\",\n    \"haryana\": \"haryana\",\n\n    \"pb\": \"punjab\",\n    \"punjab\": \"punjab\",\n\n    \"ka\": \"karnataka\",\n    \"karnataka\": \"karnataka\",\n\n    \"tn\": \"tamil nadu\",\n    \"tamilnadu\": \"tamil nadu\",\n    \"tamil nadu\": \"tamil nadu\",\n\n    \"ap\": \"andhra pradesh\",\n    \"andhra pradesh\": \"andhra pradesh\",\n\n    \"ts\": \"telangana\",\n    \"telangana\": \"telangana\",\n\n    \"wb\": \"west bengal\",\n    \"west bengal\": \"west bengal\",\n\n    \"br\": \"bihar\",\n    \"bihar\": \"bihar\",\n\n    \"jh\": \"jharkhand\",\n    \"jharkhand\": \"jharkhand\",\n\n    \"od\": \"odisha\",\n    \"or\": \"odisha\",\n    \"odisha\": \"odisha\",\n\n    \"cg\": \"chhattisgarh\",\n    \"chhattisgarh\": \"chhattisgarh\",\n\n    \"uk\": \"uttarakhand\",\n    \"uttarakhand\": \"uttarakhand\",\n\n    \"hp\": \"himachal pradesh\",\n    \"himachal pradesh\": \"himachal pradesh\",\n\n    \"jk\": \"jammu and kashmir\",\n    \"jammu & kashmir\": \"jammu and kashmir\",\n    \"jammu and kashmir\": \"jammu and kashmir\",\n\n    \"goa\": \"goa\",\n    \"kerala\": \"kerala\",\n    \"assam\": \"assam\",\n    \"manipur\": \"manipur\",\n    \"meghalaya\": \"meghalaya\",\n    \"mizoram\": \"mizoram\",\n    \"nagaland\": \"nagaland\",\n    \"tripura\": \"tripura\",\n    \"sikkim\": \"sikkim\",\n    \"arunachal pradesh\": \"arunachal pradesh\"\n}\n\n\n# --------------------------------------------\n# 6. PROCESS ALL ITEMS\n# --------------------------------------------\n\nfor item in items:\n\n    # ----------------------------------------\n    # NULL SAFETY\n    # ----------------------------------------\n\n    if item is None:\n        continue\n\n    if not isinstance(item, dict):\n        continue\n\n    if \"json\" not in item:\n        continue\n\n    data = item[\"json\"]\n\n    if data is None:\n        continue\n\n    if not isinstance(data, dict):\n        continue\n\n\n    # ----------------------------------------\n    # CREATE CLEANED RECORD\n    # ----------------------------------------\n\n    cleaned = {}\n\n\n    # ----------------------------------------\n    # FULL NAME\n    # ----------------------------------------\n\n    cleaned[\"full_name\"] = clean_text(\n        data.get(\"full_name\")\n    )\n\n\n    # ----------------------------------------\n    # EMAIL\n    # ----------------------------------------\n\n    cleaned[\"email\"], email_valid = clean_email(\n        data.get(\"email\")\n    )\n\n\n    # ----------------------------------------\n    # DATE\n    # ----------------------------------------\n\n    cleaned[\"date\"], date_valid = clean_date(\n        data.get(\"date\")\n    )\n\n\n    # ----------------------------------------\n    # STATE\n    # ----------------------------------------\n\n    raw_state = clean_text(\n        data.get(\"edition_state\")\n    )\n\n    if raw_state is None:\n\n        cleaned[\"edition_state\"] = None\n\n        state_valid = False\n\n    elif raw_state in state_mapping:\n\n        cleaned[\"edition_state\"] = (\n            state_mapping[raw_state]\n        )\n\n        state_valid = True\n\n    else:\n\n        cleaned[\"edition_state\"] = raw_state\n\n        state_valid = False\n\n\n    # ----------------------------------------\n    # DEPARTMENT\n    # ----------------------------------------\n\n    cleaned[\"department\"] = clean_text(\n        data.get(\"department\")\n    )\n\n\n    # ----------------------------------------\n    # DESIGNATION\n    # ----------------------------------------\n\n    cleaned[\"designation\"] = clean_text(\n        data.get(\"designation\")\n    )\n\n\n    # ----------------------------------------\n    # 7. REQUIRED FIELD CHECK\n    # ----------------------------------------\n\n    required_fields = [\n\n        \"full_name\",\n        \"email\",\n        \"date\",\n        \"edition_state\",\n        \"department\"\n\n    ]\n\n    missing_fields = []\n\n    for field in required_fields:\n\n        if cleaned.get(field) is None:\n\n            missing_fields.append(field)\n\n\n    # ----------------------------------------\n    # 8. DEPARTMENT VALIDATION\n    # ----------------------------------------\n\n    department_valid = True\n\n    department = cleaned.get(\"department\")\n\n    if department is not None:\n\n        if department in allowed_departments:\n\n            cleaned[\"department\"] = (\n                allowed_departments[department]\n            )\n\n        else:\n\n            department_valid = False\n\n\n    # ----------------------------------------\n    # 9. INVALID FIELD CHECK\n    # ----------------------------------------\n\n    invalid_fields = []\n\n\n    if (\n        cleaned[\"email\"] is not None\n        and email_valid is False\n    ):\n\n        invalid_fields.append(\"email\")\n\n\n    if (\n        cleaned[\"date\"] is not None\n        and date_valid is False\n    ):\n\n        invalid_fields.append(\"date\")\n\n\n    if (\n        cleaned[\"edition_state\"] is not None\n        and state_valid is False\n    ):\n\n        invalid_fields.append(\"edition_state\")\n\n\n    if (\n        cleaned[\"department\"] is not None\n        and department_valid is False\n    ):\n\n        invalid_fields.append(\"department\")\n\n\n    # ----------------------------------------\n    # 10. DUPLICATE CHECK\n    # ----------------------------------------\n\n    duplicate_key = (\n\n        cleaned.get(\"full_name\"),\n        cleaned.get(\"email\"),\n        cleaned.get(\"date\"),\n        cleaned.get(\"edition_state\"),\n        cleaned.get(\"department\")\n\n    )\n\n\n    is_duplicate = duplicate_key in seen\n\n\n    if not is_duplicate:\n\n        seen.add(duplicate_key)\n\n\n    # ----------------------------------------\n    # 11. FINAL VALIDATION\n    # ----------------------------------------\n\n    if len(missing_fields) > 0:\n\n        validation_status = \"invalid\"\n\n        validation_reason = (\n            \"missing required fields: \"\n            + \", \".join(missing_fields)\n        )\n\n\n    elif len(invalid_fields) > 0:\n\n        validation_status = \"invalid\"\n\n        validation_reason = (\n            \"invalid fields: \"\n            + \", \".join(invalid_fields)\n        )\n\n\n    elif is_duplicate:\n\n        validation_status = \"duplicate\"\n\n        validation_reason = \"duplicate record\"\n\n\n    else:\n\n        validation_status = \"valid\"\n\n        validation_reason = (\n            \"data passed all validation checks\"\n        )\n\n\n    # ----------------------------------------\n    # 12. QUALITY COLUMNS\n    # ----------------------------------------\n\n    cleaned[\"validation_status\"] = (\n        validation_status\n    )\n\n    cleaned[\"validation_reason\"] = (\n        validation_reason\n    )\n\n    cleaned[\"missing_fields\"] = (\n        \", \".join(missing_fields)\n    )\n\n    cleaned[\"invalid_fields\"] = (\n        \", \".join(invalid_fields)\n    )\n\n    cleaned[\"is_duplicate\"] = (\n        is_duplicate\n    )\n\n\n    # ----------------------------------------\n    # 13. OUTPUT\n    # ----------------------------------------\n\n    cleaned_data.append({\n\n        \"json\": cleaned\n\n    })\n\n\n# --------------------------------------------\n# 14. FINAL OUTPUT\n# --------------------------------------------\n\nreturn cleaned_data"
+      },
+      "id": "5bee8c89-fe17-4dda-8aec-5bfc904d26eb",
+      "name": "Code in Python",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        -416
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "cd82d505-606c-49fc-9dbe-4af80b4e5b63",
+      "name": "Convert to File1",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1232,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst departmentData = {};\n\nfor (const item of items) {\n  const row = item.json;\n\n  const department = String(row.department || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (!department) continue;\n\n  if (!departmentData[department]) {\n    departmentData[department] = {\n      department: department,\n      count: 0\n    };\n  }\n\n  departmentData[department].count += 1;\n}\n\n// Total records\nconst total = Object.values(departmentData)\n  .reduce((sum, item) => sum + item.count, 0);\n\n// Percentage calculate\nconst result = Object.values(departmentData)\n  .map(item => ({\n    department: item.department,\n    count: item.count,\n    percentage: total > 0\n      ? Number(((item.count / total) * 100).toFixed(2))\n      : 0\n  }))\n  .sort((a, b) => b.count - a.count);\n\nreturn result.map(item => ({\n  json: item\n}));"
+      },
+      "id": "63fd77b2-dfa9-49f3-a07e-49dd8381e29a",
+      "name": "Department Distribution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst stateData = {};\n\nconst stateMapping = {\n  \"mp\": {\n    name: \"madhya pradesh\",\n    code: \"MP\"\n  },\n  \"m.p\": {\n    name: \"madhya pradesh\",\n    code: \"MP\"\n  },\n  \"m.p.\": {\n    name: \"madhya pradesh\",\n    code: \"MP\"\n  },\n  \"madhya pradesh\": {\n    name: \"madhya pradesh\",\n    code: \"MP\"\n  },\n\n  \"up\": {\n    name: \"uttar pradesh\",\n    code: \"UP\"\n  },\n  \"u.p\": {\n    name: \"uttar pradesh\",\n    code: \"UP\"\n  },\n  \"u.p.\": {\n    name: \"uttar pradesh\",\n    code: \"UP\"\n  },\n  \"uttar pradesh\": {\n    name: \"uttar pradesh\",\n    code: \"UP\"\n  },\n\n  \"mh\": {\n    name: \"maharashtra\",\n    code: \"MH\"\n  },\n  \"maharashtra\": {\n    name: \"maharashtra\",\n    code: \"MH\"\n  },\n\n  \"rj\": {\n    name: \"rajasthan\",\n    code: \"RJ\"\n  },\n  \"rajasthan\": {\n    name: \"rajasthan\",\n    code: \"RJ\"\n  },\n\n  \"gj\": {\n    name: \"gujarat\",\n    code: \"GJ\"\n  },\n  \"gujarat\": {\n    name: \"gujarat\",\n    code: \"GJ\"\n  },\n\n  \"dl\": {\n    name: \"delhi\",\n    code: \"DL\"\n  },\n  \"delhi\": {\n    name: \"delhi\",\n    code: \"DL\"\n  },\n\n  \"hr\": {\n    name: \"haryana\",\n    code: \"HR\"\n  },\n  \"haryana\": {\n    name: \"haryana\",\n    code: \"HR\"\n  },\n\n  \"pb\": {\n    name: \"punjab\",\n    code: \"PB\"\n  },\n  \"punjab\": {\n    name: \"punjab\",\n    code: \"PB\"\n  },\n\n  \"ka\": {\n    name: \"karnataka\",\n    code: \"KA\"\n  },\n  \"karnataka\": {\n    name: \"karnataka\",\n    code: \"KA\"\n  },\n\n  \"tn\": {\n    name: \"tamil nadu\",\n    code: \"TN\"\n  },\n  \"tamil nadu\": {\n    name: \"tamil nadu\",\n    code: \"TN\"\n  },\n\n  \"ap\": {\n    name: \"andhra pradesh\",\n    code: \"AP\"\n  },\n  \"andhra pradesh\": {\n    name: \"andhra pradesh\",\n    code: \"AP\"\n  },\n\n  \"ts\": {\n    name: \"telangana\",\n    code: \"TS\"\n  },\n  \"telangana\": {\n    name: \"telangana\",\n    code: \"TS\"\n  },\n\n  \"wb\": {\n    name: \"west bengal\",\n    code: \"WB\"\n  },\n  \"west bengal\": {\n    name: \"west bengal\",\n    code: \"WB\"\n  },\n\n  \"br\": {\n    name: \"bihar\",\n    code: \"BR\"\n  },\n  \"bihar\": {\n    name: \"bihar\",\n    code: \"BR\"\n  },\n\n  \"jh\": {\n    name: \"jharkhand\",\n    code: \"JH\"\n  },\n  \"jharkhand\": {\n    name: \"jharkhand\",\n    code: \"JH\"\n  },\n\n  \"od\": {\n    name: \"odisha\",\n    code: \"OD\"\n  },\n  \"or\": {\n    name: \"odisha\",\n    code: \"OD\"\n  },\n  \"odisha\": {\n    name: \"odisha\",\n    code: \"OD\"\n  },\n\n  \"cg\": {\n    name: \"chhattisgarh\",\n    code: \"CG\"\n  },\n  \"chhattisgarh\": {\n    name: \"chhattisgarh\",\n    code: \"CG\"\n  },\n\n  \"uk\": {\n    name: \"uttarakhand\",\n    code: \"UK\"\n  },\n  \"uttarakhand\": {\n    name: \"uttarakhand\",\n    code: \"UK\"\n  },\n\n  \"hp\": {\n    name: \"himachal pradesh\",\n    code: \"HP\"\n  },\n  \"himachal pradesh\": {\n    name: \"himachal pradesh\",\n    code: \"HP\"\n  },\n\n  \"jk\": {\n    name: \"jammu and kashmir\",\n    code: \"JK\"\n  },\n  \"jammu and kashmir\": {\n    name: \"jammu and kashmir\",\n    code: \"JK\"\n  },\n\n  \"goa\": {\n    name: \"goa\",\n    code: \"GA\"\n  },\n\n  \"kerala\": {\n    name: \"kerala\",\n    code: \"KL\"\n  },\n\n  \"assam\": {\n    name: \"assam\",\n    code: \"AS\"\n  },\n\n  \"sikkim\": {\n    name: \"sikkim\",\n    code: \"SK\"\n  },\n\n  \"bihar\": {\n    name: \"bihar\",\n    code: \"BR\"\n  }\n};\n\n\n// --------------------------------------------\n// PROCESS INPUT\n// --------------------------------------------\n\nfor (const item of items) {\n\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  let state = String(row.edition_state || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (!state) continue;\n\n\n  // Standardize state\n  const mapped = stateMapping[state];\n\n  const stateName = mapped\n    ? mapped.name\n    : state;\n\n  const stateCode = mapped\n    ? mapped.code\n    : \"\";\n\n\n  // Create state record\n  if (!stateData[stateName]) {\n\n    stateData[stateName] = {\n      state: stateName,\n      display_state: stateName\n        .split(\" \")\n        .map(word =>\n          word.charAt(0).toUpperCase() + word.slice(1)\n        )\n        .join(\" \"),\n      state_code: stateCode,\n      count: 0\n    };\n\n  }\n\n  stateData[stateName].count += 1;\n}\n\n\n// --------------------------------------------\n// TOTAL\n// --------------------------------------------\n\nconst total = Object.values(stateData)\n  .reduce((sum, item) => sum + item.count, 0);\n\n\n// --------------------------------------------\n// FINAL MAP DATA\n// --------------------------------------------\n\nconst result = Object.values(stateData).map(item => {\n\n  return {\n    state: item.state,\n    display_state: item.display_state,\n    state_code: item.state_code,\n    count: item.count,\n    percentage: total > 0\n      ? Number(((item.count / total) * 100).toFixed(2))\n      : 0\n  };\n\n});\n\n\n// --------------------------------------------\n// SORT HIGH → LOW\n// --------------------------------------------\n\nresult.sort((a, b) => b.count - a.count);\n\n\n// --------------------------------------------\n// N8N OUTPUT\n// --------------------------------------------\n\nreturn result.map(item => ({\n  json: item\n}));"
+      },
+      "id": "8794a3b2-85a8-446c-8f79-1dc82bca9196",
+      "name": "stateMapping",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst dateData = {};\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  let date = String(row.date || \"\").trim();\n\n  if (!date) continue;\n\n  // ISO date ko YYYY-MM-DD mein convert karo\n  if (date.includes(\"T\")) {\n    date = date.split(\"T\")[0];\n  }\n\n  // DD-MM-YYYY ko YYYY-MM-DD mein convert karo\n  if (/^\\d{2}-\\d{2}-\\d{4}$/.test(date)) {\n    const parts = date.split(\"-\");\n    date = `${parts[2]}-${parts[1]}-${parts[0]}`;\n  }\n\n  // Basic date validation\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {\n    continue;\n  }\n\n  if (!dateData[date]) {\n    dateData[date] = {\n      date: date,\n      count: 0\n    };\n  }\n\n  dateData[date].count += 1;\n}\n\n// Date ke according ascending order\nconst result = Object.values(dateData)\n  .sort((a, b) => a.date.localeCompare(b.date));\n\nreturn result.map(item => ({\n  json: item\n}));"
+      },
+      "id": "90ff1ad7-ccab-4752-852e-4cb5874befb8",
+      "name": "Entries Over Time banate hain",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst data = {};\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  const state = String(row.edition_state || \"\")\n    .trim()\n    .toLowerCase();\n\n  const department = String(row.department || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (!state || !department) continue;\n\n  // State create karo\n  if (!data[state]) {\n    data[state] = {\n      state: state\n    };\n  }\n\n  // Department dynamically add karo\n  if (!data[state][department]) {\n    data[state][department] = 0;\n  }\n\n  data[state][department] += 1;\n}\n\n// Output ko n8n items mein convert karo\nconst result = Object.values(data);\n\n// State-wise total bhi calculate karo\nfor (const item of result) {\n  let total = 0;\n\n  for (const key of Object.keys(item)) {\n    if (key !== \"state\" && typeof item[key] === \"number\") {\n      total += item[key];\n    }\n  }\n\n  item.total = total;\n}\n\n// Highest total wale states pehle\nresult.sort((a, b) => b.total - a.total);\n\nreturn result.map(item => ({\n  json: item\n}));"
+      },
+      "id": "ce169838-b1d9-4ceb-b799-eabedfc4ecbc",
+      "name": "State × Department Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst designationData = {};\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  let designation = String(row.designation || \"\")\n    .trim()\n    .toLowerCase();\n\n  // Blank / null designation ko category do\n  if (!designation) {\n    designation = \"not specified\";\n  }\n\n  if (!designationData[designation]) {\n    designationData[designation] = {\n      designation: designation,\n      count: 0\n    };\n  }\n\n  designationData[designation].count += 1;\n}\n\n// Count ke descending order mein sort\nconst result = Object.values(designationData)\n  .sort((a, b) => b.count - a.count);\n\nreturn result.map(item => ({\n  json: item\n}));"
+      },
+      "id": "751ca471-30ea-4403-8318-e17d7fdd7e68",
+      "name": "Designation / Role Distribution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nlet valid = 0;\nlet invalid = 0;\nlet duplicate = 0;\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  const validationStatus = String(row.validation_status || \"\")\n    .trim()\n    .toLowerCase();\n\n  const isDuplicate =\n    row.is_duplicate === true ||\n    String(row.is_duplicate || \"\").toLowerCase() === \"true\";\n\n  // Validation status\n  if (validationStatus === \"valid\") {\n    valid++;\n  } else if (validationStatus === \"invalid\") {\n    invalid++;\n  }\n\n  // Duplicate records\n  if (isDuplicate) {\n    duplicate++;\n  }\n}\n\nconst total = valid + invalid;\n\nconst result = [\n  {\n    status: \"valid\",\n    count: valid,\n    percentage: total > 0\n      ? Number(((valid / total) * 100).toFixed(2))\n      : 0\n  },\n  {\n    status: \"invalid\",\n    count: invalid,\n    percentage: total > 0\n      ? Number(((invalid / total) * 100).toFixed(2))\n      : 0\n  },\n  {\n    status: \"duplicate\",\n    count: duplicate,\n    percentage: total > 0\n      ? Number(((duplicate / total) * 100).toFixed(2))\n      : 0\n  }\n];\n\nreturn result.map(item => ({\n  json: item\n}));"
+      },
+      "id": "6d0cd5bf-d6c0-4173-976e-9920e2faea66",
+      "name": "Data Validation Overview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nlet totalRecords = 0;\nlet validRecords = 0;\nlet invalidRecords = 0;\nlet duplicateRecords = 0;\n\nconst states = new Set();\nconst departments = new Set();\nconst designations = new Set();\n\nlet latestDate = null;\n\n// Required fields\nconst requiredFields = [\n  \"full_name\",\n  \"email\",\n  \"date\",\n  \"edition_state\",\n  \"department\"\n];\n\nlet completeRecords = 0;\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  totalRecords++;\n\n  // -------------------------\n  // Validation\n  // -------------------------\n  const validationStatus = String(\n    row.validation_status || \"\"\n  ).trim().toLowerCase();\n\n  if (validationStatus === \"valid\") {\n    validRecords++;\n  }\n\n  if (validationStatus === \"invalid\") {\n    invalidRecords++;\n  }\n\n  // -------------------------\n  // Duplicate\n  // -------------------------\n  const isDuplicate =\n    row.is_duplicate === true ||\n    String(row.is_duplicate || \"\").toLowerCase() === \"true\";\n\n  if (isDuplicate) {\n    duplicateRecords++;\n  }\n\n  // -------------------------\n  // States\n  // -------------------------\n  const state = String(row.edition_state || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (state) {\n    states.add(state);\n  }\n\n  // -------------------------\n  // Departments\n  // -------------------------\n  const department = String(row.department || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (department) {\n    departments.add(department);\n  }\n\n  // -------------------------\n  // Designations\n  // -------------------------\n  const designation = String(row.designation || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (designation) {\n    designations.add(designation);\n  }\n\n  // -------------------------\n  // Latest Date\n  // -------------------------\n  let date = String(row.date || \"\").trim();\n\n  if (date.includes(\"T\")) {\n    date = date.split(\"T\")[0];\n  }\n\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {\n    if (!latestDate || date > latestDate) {\n      latestDate = date;\n    }\n  }\n\n  // -------------------------\n  // Data Completeness\n  // -------------------------\n  let complete = true;\n\n  for (const field of requiredFields) {\n    const value = String(row[field] || \"\").trim();\n\n    if (!value) {\n      complete = false;\n      break;\n    }\n  }\n\n  if (complete) {\n    completeRecords++;\n  }\n}\n\n// -------------------------\n// Calculations\n// -------------------------\n\nconst completenessPercentage =\n  totalRecords > 0\n    ? Number(((completeRecords / totalRecords) * 100).toFixed(2))\n    : 0;\n\nconst validPercentage =\n  totalRecords > 0\n    ? Number(((validRecords / totalRecords) * 100).toFixed(2))\n    : 0;\n\n// -------------------------\n// Final KPI Object\n// -------------------------\n\nreturn [\n  {\n    json: {\n      total_records: totalRecords,\n\n      total_states: states.size,\n\n      total_departments: departments.size,\n\n      total_designations: designations.size,\n\n      valid_records: validRecords,\n\n      invalid_records: invalidRecords,\n\n      duplicate_records: duplicateRecords,\n\n      active_states: states.size,\n\n      latest_submission: latestDate || \"N/A\",\n\n      complete_records: completeRecords,\n\n      data_completeness_percentage: completenessPercentage,\n\n      valid_percentage: validPercentage\n    }\n  }\n];"
+      },
+      "id": "a1590a0c-d606-4596-9fbd-d427bff3fa33",
+      "name": "General KPI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst stateCounts = {};\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  const state = String(row.edition_state || \"\")\n    .trim()\n    .toLowerCase();\n\n  if (!state) continue;\n\n  stateCounts[state] = (stateCounts[state] || 0) + 1;\n}\n\nconst total = Object.values(stateCounts)\n  .reduce((sum, count) => sum + count, 0);\n\nconst output = Object.entries(stateCounts)\n  .map(([state, count]) => ({\n    state,\n    count,\n    percentage: total > 0\n      ? Number(((count / total) * 100).toFixed(2))\n      : 0\n  }))\n  .sort((a, b) => b.count - a.count);\n\nreturn output.map(row => ({\n  json: row\n}));"
+      },
+      "id": "34d4e723-8195-4b4f-83b4-09504e9a1f88",
+      "name": "State-wise Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -896
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Daily Express – Business Analytics Form",
+        "formDescription": "Please provide basic information about the newspaper business to help us analyze sales, readership, circulation, and overall business performance.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email Address",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Date",
+              "fieldType": "date"
+            },
+            {
+              "fieldLabel": "UN/ State",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Andhra Pradesh"
+                  },
+                  {
+                    "option": "Arunachal Pradesh"
+                  },
+                  {
+                    "option": "Assam"
+                  },
+                  {
+                    "option": "Bihar"
+                  },
+                  {
+                    "option": "Chhattisgarh"
+                  },
+                  {
+                    "option": "Goa"
+                  },
+                  {
+                    "option": "Gujarat"
+                  },
+                  {
+                    "option": "Haryana"
+                  },
+                  {
+                    "option": "Himachal Pradesh"
+                  },
+                  {
+                    "option": "Jharkhand"
+                  },
+                  {
+                    "option": "Karnataka"
+                  },
+                  {
+                    "option": "Kerala"
+                  },
+                  {
+                    "option": "Madhya Pradesh"
+                  },
+                  {
+                    "option": "Maharashtra"
+                  },
+                  {
+                    "option": "Manipur"
+                  },
+                  {
+                    "option": "Meghalaya"
+                  },
+                  {
+                    "option": "Mizoram"
+                  },
+                  {
+                    "option": "Nagaland"
+                  },
+                  {
+                    "option": "Odisha"
+                  },
+                  {
+                    "option": "Punjab"
+                  },
+                  {
+                    "option": "Rajasthan"
+                  },
+                  {
+                    "option": "Sikkim"
+                  },
+                  {
+                    "option": "Tamil Nadu"
+                  },
+                  {
+                    "option": "Telangana"
+                  },
+                  {
+                    "option": "Tripura"
+                  },
+                  {
+                    "option": "Uttar Pradesh"
+                  },
+                  {
+                    "option": "Uttarakhand"
+                  },
+                  {
+                    "option": "West Bengal "
+                  },
+                  {
+                    "option": "Andaman and Nicobar Islands"
+                  },
+                  {
+                    "option": "Chandigarh"
+                  },
+                  {
+                    "option": "Dadra and Nagar Haveli and Daman and Diu"
+                  },
+                  {
+                    "option": "Delhi (NCT)"
+                  },
+                  {
+                    "option": "Jammu and Kashmir"
+                  },
+                  {
+                    "option": "Ladakh"
+                  },
+                  {
+                    "option": "Lakshadweep"
+                  },
+                  {
+                    "option": "Puducherry"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Business/Department",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Sales"
+                  },
+                  {
+                    "option": "Marketing"
+                  },
+                  {
+                    "option": "Advertising"
+                  },
+                  {
+                    "option": "Editorial"
+                  },
+                  {
+                    "option": "Finance"
+                  },
+                  {
+                    "option": "Management"
+                  },
+                  {
+                    "option": "Other"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Role / Designation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "863846bf-49eb-4a1a-b366-216e4aae1ea2",
+      "name": "On form submission",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -2672,
+        -752
+      ],
+      "webhookId": "db69b376-36a0-4e2c-8d0c-9d9b07f17c1f"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "6cY1P5HjWaWmbpSe",
+          "mode": "list",
+          "cachedResultName": "Data",
+          "cachedResultUrl": "/projects/SQqB1gEEJgivzLp3/datatables/6cY1P5HjWaWmbpSe"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "full_name": "={{ $json['Full Name'] }}",
+            "email": "={{ $json['Email Address'] }}",
+            "department": "={{ $json['Business/Department'] }}",
+            "designation": "={{ $json['Role / Designation'] }}",
+            "date": "={{ $json.Date }}",
+            "edition_state": "={{ $json['UN/ State'] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "full_name",
+              "displayName": "full_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "edition_state",
+              "displayName": "edition_state",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "department",
+              "displayName": "department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "designation",
+              "displayName": "designation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ac02eed9-c6c0-4341-904c-873434ec86c0",
+      "name": "Insert row",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -2672,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "6cY1P5HjWaWmbpSe",
+          "mode": "list",
+          "cachedResultName": "Data",
+          "cachedResultUrl": "/projects/SQqB1gEEJgivzLp3/datatables/6cY1P5HjWaWmbpSe"
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "id",
+        "orderByDirection": "ASC"
+      },
+      "id": "213b3d45-7eaa-4f3b-aa77-2ef41069d77b",
+      "name": "Get All Records",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -2672,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nreturn rows.map(item => {\n  const r = item.json || {};\n  return {\n    json: {\n      id: r.id ?? '',\n      full_name: r.full_name ?? '',\n      email: r.email ?? '',\n      edition_state: r.edition_state ?? '',\n      department: r.department ?? '',\n      designation: r.designation ?? '',\n      date: r.date ?? '',\n      createdAt: r.createdAt ?? '',\n      updatedAt: r.updatedAt ?? ''\n    }\n  };\n});"
+      },
+      "id": "66d21527-000d-45ea-a36e-ce4e9c1f955a",
+      "name": "Format Dataset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2672,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "daily_express_dataset.csv"
+        }
+      },
+      "id": "84a4a93c-530d-47dc-9df7-0a437f586364",
+      "name": "Convert to File",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -2688,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "dhruvajain912005@gmail.com",
+        "subject": "Daily Express Analytics Dashboard & Dataset",
+        "message": "Hello,<br><br>Your Daily Express Analytics Dashboard is ready.<br><br>Dashboard:<br><a href=\"https://dd98.app.n8n.cloud/webhook/daily-express-dashboard\">Open Daily Express Analytics Dashboard</a><br><br>The complete dataset is also attached to this email as a CSV file.<br><br>Dataset:<br>daily_express_dataset.csv<br><br>Regards,<br>Daily Express Analytics System",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "id": "9deefb6c-85d5-48fc-bab6-01c28132dd39",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2688,
+        480
+      ],
+      "webhookId": "c5e438b1-f738-4814-855f-f12f9bed8812",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ZMhkOTTG7YIDVe0x",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 8
+      },
+      "id": "ff3a733a-720f-4f3d-843d-47910c4b5181",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -352,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst dashboard = {\n  kpis: {},\n  stateMap: [],\n  stateRanking: [],\n  departments: [],\n  dateTrend: [],\n  stateDepartment: [],\n  designations: [],\n  validation: []\n};\n\nfor (const item of items) {\n  if (!item || !item.json) continue;\n\n  const row = item.json;\n\n  // -------------------------\n  // KPI\n  // -------------------------\n  if (\n    row.total_records !== undefined ||\n    row.total_states !== undefined ||\n    row.total_departments !== undefined\n  ) {\n    dashboard.kpis = row;\n    continue;\n  }\n\n  // -------------------------\n  // Department Distribution\n  // -------------------------\n  if (\n    row.department !== undefined &&\n    row.count !== undefined &&\n    row.percentage !== undefined\n  ) {\n    dashboard.departments.push(row);\n    continue;\n  }\n\n  // -------------------------\n  // Validation\n  // -------------------------\n  if (\n    row.status !== undefined &&\n    row.count !== undefined\n  ) {\n    dashboard.validation.push(row);\n    continue;\n  }\n\n  // -------------------------\n  // Designation Distribution\n  // -------------------------\n  if (\n    row.designation !== undefined &&\n    row.count !== undefined\n  ) {\n    dashboard.designations.push(row);\n    continue;\n  }\n\n  // -------------------------\n  // Date Trend\n  // -------------------------\n  if (\n    row.date !== undefined &&\n    row.count !== undefined\n  ) {\n    dashboard.dateTrend.push(row);\n    continue;\n  }\n\n  // -------------------------\n  // State Map\n  // -------------------------\n  if (\n    row.state !== undefined &&\n    row.display_state !== undefined &&\n    row.state_code !== undefined\n  ) {\n    dashboard.stateMap.push(row);\n    continue;\n  }\n\n  // -------------------------\n  // State × Department\n  // -------------------------\n  if (\n    row.state !== undefined &&\n    row.total !== undefined\n  ) {\n    dashboard.stateDepartment.push(row);\n    continue;\n  }\n\n  // -------------------------\n  // State Ranking\n  // -------------------------\n  if (\n    row.state !== undefined &&\n    row.count !== undefined\n  ) {\n    dashboard.stateRanking.push(row);\n    continue;\n  }\n}\n\n// Sorting\n\ndashboard.stateMap.sort((a, b) => b.count - a.count);\n\ndashboard.stateRanking.sort((a, b) => b.count - a.count);\n\ndashboard.departments.sort((a, b) => b.count - a.count);\n\ndashboard.designations.sort((a, b) => b.count - a.count);\n\ndashboard.dateTrend.sort((a, b) =>\n  String(a.date).localeCompare(String(b.date))\n);\n\nreturn [\n  {\n    json: dashboard\n  }\n];"
+      },
+      "id": "55d80f72-2ac1-40cc-9d2a-9f347ffe4ee5",
+      "name": "Final Dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// ================================\n// DASHBOARD DATA\n// ================================\n\nconst kpis = input.kpis || {};\n\nconst stateMap = input.stateMap || [];\nconst stateRanking = input.stateRanking || [];\nconst departments = input.departments || [];\nconst dateTrend = input.dateTrend || [];\nconst stateDepartment = input.stateDepartment || [];\nconst designations = input.designations || [];\nconst validation = input.validation || [];\n\n// Safe JSON for browser\nconst json = (data) => JSON.stringify(data)\n  .replace(/</g, \"\\\\u003c\")\n  .replace(/>/g, \"\\\\u003e\")\n  .replace(/&/g, \"\\\\u0026\");\n\n// ================================\n// HTML\n// ================================\n\nconst html = `<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\n<title>Daily Express Analytics Dashboard</title>\n\n<!-- Leaflet -->\n<link\n  rel=\"stylesheet\"\n  href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\"\n/>\n\n<script\n  src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\">\n</script>\n\n<!-- Chart.js -->\n<script\n  src=\"https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js\">\n</script>\n\n<style>\n\n* {\n  box-sizing: border-box;\n}\n\nbody {\n  margin: 0;\n  font-family: Arial, Helvetica, sans-serif;\n  background: #f4f6f9;\n  color: #172033;\n}\n\n.header {\n  background: #ffffff;\n  padding: 22px 30px;\n  border-bottom: 1px solid #e5e7eb;\n}\n\n.header h1 {\n  margin: 0;\n  font-size: 26px;\n}\n\n.header p {\n  margin: 6px 0 0;\n  color: #6b7280;\n}\n\n.container {\n  padding: 24px;\n  max-width: 1500px;\n  margin: auto;\n}\n\n/* KPI */\n\n.kpi-grid {\n  display: grid;\n  grid-template-columns: repeat(6, 1fr);\n  gap: 16px;\n  margin-bottom: 22px;\n}\n\n.kpi {\n  background: white;\n  border-radius: 12px;\n  padding: 18px;\n  border: 1px solid #e5e7eb;\n  box-shadow: 0 2px 8px rgba(0,0,0,0.04);\n}\n\n.kpi-title {\n  font-size: 13px;\n  color: #6b7280;\n  margin-bottom: 8px;\n}\n\n.kpi-value {\n  font-size: 27px;\n  font-weight: 700;\n}\n\n/* GRID */\n\n.grid {\n  display: grid;\n  grid-template-columns: 1.4fr 1fr;\n  gap: 20px;\n  margin-bottom: 20px;\n}\n\n.grid-equal {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 20px;\n  margin-bottom: 20px;\n}\n\n.card {\n  background: white;\n  border-radius: 14px;\n  padding: 20px;\n  border: 1px solid #e5e7eb;\n  box-shadow: 0 2px 8px rgba(0,0,0,0.04);\n}\n\n.card h2 {\n  margin: 0 0 5px;\n  font-size: 18px;\n}\n\n.card p {\n  margin: 0 0 15px;\n  color: #6b7280;\n  font-size: 13px;\n}\n\n/* MAP */\n\n#indiaMap {\n  height: 560px;\n  width: 100%;\n  border-radius: 10px;\n}\n\n.map-controls {\n  display: flex;\n  gap: 8px;\n  margin-bottom: 12px;\n}\n\nbutton {\n  border: 1px solid #d1d5db;\n  background: white;\n  padding: 8px 13px;\n  border-radius: 7px;\n  cursor: pointer;\n}\n\nbutton:hover {\n  background: #f3f4f6;\n}\n\n/* CHART */\n\n.chart-container {\n  height: 330px;\n  position: relative;\n}\n\n/* RESPONSIVE */\n\n@media(max-width: 1100px) {\n\n  .kpi-grid {\n    grid-template-columns: repeat(3, 1fr);\n  }\n\n  .grid,\n  .grid-equal {\n    grid-template-columns: 1fr;\n  }\n\n}\n\n@media(max-width: 650px) {\n\n  .kpi-grid {\n    grid-template-columns: repeat(2, 1fr);\n  }\n\n  .container {\n    padding: 12px;\n  }\n\n}\n\n</style>\n\n</head>\n\n<body>\n\n<div class=\"header\">\n\n  <h1>Daily Express Analytics Dashboard</h1>\n\n  <p>\n    Business data overview • State, department and data-quality analysis\n  </p>\n\n</div>\n\n<div class=\"container\">\n\n<!-- ================= KPI ================= -->\n\n<div class=\"kpi-grid\">\n\n  <div class=\"kpi\">\n    <div class=\"kpi-title\">Total Records</div>\n    <div class=\"kpi-value\">${kpis.total_records || 0}</div>\n  </div>\n\n  <div class=\"kpi\">\n    <div class=\"kpi-title\">States Covered</div>\n    <div class=\"kpi-value\">${kpis.total_states || 0}</div>\n  </div>\n\n  <div class=\"kpi\">\n    <div class=\"kpi-title\">Departments</div>\n    <div class=\"kpi-value\">${kpis.total_departments || 0}</div>\n  </div>\n\n  <div class=\"kpi\">\n    <div class=\"kpi-title\">Valid Records</div>\n    <div class=\"kpi-value\">${kpis.valid_records || 0}</div>\n  </div>\n\n  <div class=\"kpi\">\n    <div class=\"kpi-title\">Invalid Records</div>\n    <div class=\"kpi-value\">${kpis.invalid_records || 0}</div>\n  </div>\n\n  <div class=\"kpi\">\n    <div class=\"kpi-title\">Completeness</div>\n    <div class=\"kpi-value\">\n      ${kpis.data_completeness_percentage || 0}%\n    </div>\n  </div>\n\n</div>\n\n\n<!-- ================= MAP + DEPARTMENT ================= -->\n\n<div class=\"grid\">\n\n  <div class=\"card\">\n\n    <h2>India State Distribution</h2>\n\n    <p>\n      Hover over a state to see record count and percentage.\n      Click a state for details.\n    </p>\n\n    <div class=\"map-controls\">\n\n      <button onclick=\"map.zoomIn()\">＋ Zoom In</button>\n\n      <button onclick=\"map.zoomOut()\">− Zoom Out</button>\n\n      <button onclick=\"map.setView([22.5, 80], 4.5)\">\n        Reset\n      </button>\n\n    </div>\n\n    <div id=\"indiaMap\"></div>\n\n  </div>\n\n\n  <div class=\"card\">\n\n    <h2>Department Distribution</h2>\n\n    <p>Records by department</p>\n\n    <div class=\"chart-container\">\n\n      <canvas id=\"departmentChart\"></canvas>\n\n    </div>\n\n  </div>\n\n</div>\n\n\n<!-- ================= DATE + STATE ================= -->\n\n<div class=\"grid-equal\">\n\n  <div class=\"card\">\n\n    <h2>Entries Over Time</h2>\n\n    <p>Daily record submission trend</p>\n\n    <div class=\"chart-container\">\n\n      <canvas id=\"dateChart\"></canvas>\n\n    </div>\n\n  </div>\n\n\n  <div class=\"card\">\n\n    <h2>State-wise Records</h2>\n\n    <p>Number of records by state</p>\n\n    <div class=\"chart-container\">\n\n      <canvas id=\"stateChart\"></canvas>\n\n    </div>\n\n  </div>\n\n</div>\n\n\n<!-- ================= STATE DEPARTMENT ================= -->\n\n<div class=\"card\" style=\"margin-bottom:20px\">\n\n  <h2>State × Department Analysis</h2>\n\n  <p>\n    Department-wise distribution across states\n  </p>\n\n  <div class=\"chart-container\">\n\n    <canvas id=\"stateDepartmentChart\"></canvas>\n\n  </div>\n\n</div>\n\n\n<!-- ================= VALIDATION + DESIGNATION ================= -->\n\n<div class=\"grid-equal\">\n\n  <div class=\"card\">\n\n    <h2>Data Validation</h2>\n\n    <p>\n      Valid and invalid records\n    </p>\n\n    <div class=\"chart-container\">\n\n      <canvas id=\"validationChart\"></canvas>\n\n    </div>\n\n  </div>\n\n\n  <div class=\"card\">\n\n    <h2>Designation Distribution</h2>\n\n    <p>\n      Current designation coverage\n    </p>\n\n    <div class=\"chart-container\">\n\n      <canvas id=\"designationChart\"></canvas>\n\n    </div>\n\n  </div>\n\n</div>\n\n</div>\n\n\n<script>\n\n// =======================================\n// DATA FROM N8N\n// =======================================\n\nconst stateData = ${json(stateMap)};\n\nconst stateRanking = ${json(stateRanking)};\n\nconst departmentData = ${json(departments)};\n\nconst dateData = ${json(dateTrend)};\n\nconst stateDepartmentData = ${json(stateDepartment)};\n\nconst designationData = ${json(designations)};\n\nconst validationData = ${json(validation)};\n\n\n// =======================================\n// INDIA MAP\n// =======================================\n\nconst map = L.map('indiaMap', {\n\n  zoomControl: true,\n\n  minZoom: 4,\n\n  maxZoom: 8\n\n}).setView([22.5, 80], 4.5);\n\n\n// No tile layer.\n// State GeoJSON itself will create the map.\n\n// State count lookup\nconst stateLookup = {};\n\nstateData.forEach(s => {\n\n  const key = String(\n    s.state || ''\n  ).trim().toLowerCase();\n\n  stateLookup[key] = s;\n\n});\n\n\n// Color scale\nfunction getColor(count) {\n\n  if (!count) return '#e5e7eb';\n\n  if (count >= 20) return '#08306b';\n\n  if (count >= 10) return '#2171b5';\n\n  if (count >= 5) return '#4292c6';\n\n  if (count >= 2) return '#6baed6';\n\n  return '#c6dbef';\n\n}\n\n\n// State name normalization\nfunction normalizeState(name) {\n\n  return String(name || '')\n    .trim()\n    .toLowerCase()\n    .replace(/&/g, 'and')\n    .replace(/\\\\s+/g, ' ');\n\n}\n\n\n// GeoJSON style\nfunction style(feature) {\n\n  const props = feature.properties || {};\n\n  const possibleNames = [\n\n    props.name,\n    props.NAME_1,\n    props.st_nm,\n    props.ST_NM,\n    props.state,\n    props.State\n\n  ];\n\n  let name = '';\n\n  for (const n of possibleNames) {\n\n    if (n) {\n\n      name = normalizeState(n);\n\n      break;\n\n    }\n\n  }\n\n  const data = stateLookup[name];\n\n  const count = data ? Number(data.count || 0) : 0;\n\n  return {\n\n    fillColor: getColor(count),\n\n    weight: 1,\n\n    opacity: 1,\n\n    color: '#ffffff',\n\n    fillOpacity: 0.85\n\n  };\n\n}\n\n\n// Feature interactions\nfunction onEachFeature(feature, layer) {\n\n  const props = feature.properties || {};\n\n  let name = '';\n\n  const possibleNames = [\n\n    props.name,\n    props.NAME_1,\n    props.st_nm,\n    props.ST_NM,\n    props.state,\n    props.State\n\n  ];\n\n  for (const n of possibleNames) {\n\n    if (n) {\n\n      name = n;\n\n      break;\n\n    }\n\n  }\n\n  const normalized = normalizeState(name);\n\n  const data = stateLookup[normalized];\n\n  const count = data\n    ? Number(data.count || 0)\n    : 0;\n\n  const percentage = data\n    ? Number(data.percentage || 0)\n    : 0;\n\n\n  layer.bindTooltip(\n\n    '<b>' +\n    (name || 'State') +\n    '</b><br>' +\n    'Records: ' +\n    count +\n    '<br>' +\n    'Share: ' +\n    percentage +\n    '%',\n\n    {\n      sticky: true\n    }\n\n  );\n\n\n  layer.on({\n\n    mouseover: function(e) {\n\n      e.target.setStyle({\n\n        weight: 3,\n\n        color: '#111827',\n\n        fillOpacity: 0.95\n\n      });\n\n    },\n\n    mouseout: function(e) {\n\n      e.target.setStyle(style(feature));\n\n    },\n\n    click: function() {\n\n      const selected = data || {\n\n        display_state: name,\n\n        count: 0,\n\n        percentage: 0\n\n      };\n\n      alert(\n\n        selected.display_state +\n        '\\\\n\\\\nRecords: ' +\n        selected.count +\n        '\\\\nPercentage: ' +\n        selected.percentage +\n        '%'\n\n      );\n\n    }\n\n  });\n\n}\n\n\n// Load India GeoJSON\nfetch(\n  'https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@main/geojson/india.geojson'\n)\n\n.then(response => response.json())\n\n.then(geojson => {\n\n  L.geoJSON(\n\n    geojson,\n\n    {\n\n      style: style,\n\n      onEachFeature: onEachFeature\n\n    }\n\n  ).addTo(map);\n\n})\n\n.catch(error => {\n\n  console.error(\n    'India GeoJSON loading error:',\n    error\n  );\n\n});\n\n\n// =======================================\n// DEPARTMENT CHART\n// =======================================\n\nnew Chart(\n\n  document.getElementById(\n    'departmentChart'\n  ),\n\n  {\n\n    type: 'doughnut',\n\n    data: {\n\n      labels: departmentData.map(\n        x => x.department\n      ),\n\n      datasets: [{\n\n        data: departmentData.map(\n          x => Number(x.count || 0)\n        )\n\n      }]\n\n    },\n\n    options: {\n\n      responsive: true,\n\n      maintainAspectRatio: false,\n\n      plugins: {\n\n        legend: {\n\n          position: 'bottom'\n\n        }\n\n      }\n\n    }\n\n  }\n\n);\n\n\n// =======================================\n// DATE TREND\n// =======================================\n\nnew Chart(\n\n  document.getElementById(\n    'dateChart'\n  ),\n\n  {\n\n    type: 'line',\n\n    data: {\n\n      labels: dateData.map(\n        x => x.date\n      ),\n\n      datasets: [{\n\n        label: 'Records',\n\n        data: dateData.map(\n          x => Number(x.count || 0)\n        ),\n\n        tension: 0.3,\n\n        fill: false\n\n      }]\n\n    },\n\n    options: {\n\n      responsive: true,\n\n      maintainAspectRatio: false,\n\n      plugins: {\n\n        legend: {\n\n          display: false\n\n        }\n\n      }\n\n    }\n\n  }\n\n);\n\n\n// =======================================\n// STATE RANKING\n// =======================================\n\nnew Chart(\n\n  document.getElementById(\n    'stateChart'\n  ),\n\n  {\n\n    type: 'bar',\n\n    data: {\n\n      labels: stateRanking.map(\n        x =>\n          x.display_state ||\n          x.state\n      ),\n\n      datasets: [{\n\n        label: 'Records',\n\n        data: stateRanking.map(\n          x => Number(x.count || 0)\n        )\n\n      }]\n\n    },\n\n    options: {\n\n      responsive: true,\n\n      maintainAspectRatio: false,\n\n      indexAxis: 'y',\n\n      plugins: {\n\n        legend: {\n\n          display: false\n\n        }\n\n      }\n\n    }\n\n  }\n\n);\n\n\n// =======================================\n// STATE × DEPARTMENT\n// =======================================\n\nconst states = [\n  ...new Set(\n    stateDepartmentData.map(\n      x => x.state\n    )\n  )\n];\n\nconst departments = [\n  ...new Set(\n    stateDepartmentData.flatMap(\n      x =>\n        Object.keys(x).filter(\n          key =>\n            key !== 'state' &&\n            key !== 'total'\n        )\n    )\n  )\n];\n\n\nnew Chart(\n\n  document.getElementById(\n    'stateDepartmentChart'\n  ),\n\n  {\n\n    type: 'bar',\n\n    data: {\n\n      labels: states,\n\n      datasets: departments.map(\n        dept => ({\n\n          label: dept,\n\n          data: states.map(\n            state => {\n\n              const row =\n                stateDepartmentData.find(\n                  x =>\n                    x.state === state\n                );\n\n              return row\n                ? Number(row[dept] || 0)\n                : 0;\n\n            }\n\n          )\n\n        })\n      )\n\n    },\n\n    options: {\n\n      responsive: true,\n\n      maintainAspectRatio: false,\n\n      scales: {\n\n        x: {\n\n          stacked: true\n\n        },\n\n        y: {\n\n          stacked: true,\n\n          beginAtZero: true\n\n        }\n\n      }\n\n    }\n\n  }\n\n);\n\n\n// =======================================\n// VALIDATION\n// =======================================\n\nconst validationFiltered =\n  validationData.filter(\n    x =>\n      x.status === 'valid' ||\n      x.status === 'invalid'\n  );\n\n\nnew Chart(\n\n  document.getElementById(\n    'validationChart'\n  ),\n\n  {\n\n    type: 'doughnut',\n\n    data: {\n\n      labels:\n        validationFiltered.map(\n          x => x.status\n        ),\n\n      datasets: [{\n\n        data:\n          validationFiltered.map(\n            x => Number(x.count || 0)\n          )\n\n      }]\n\n    },\n\n    options: {\n\n      responsive: true,\n\n      maintainAspectRatio: false,\n\n      plugins: {\n\n        legend: {\n\n          position: 'bottom'\n\n        }\n\n      }\n\n    }\n\n  }\n\n);\n\n\n// =======================================\n// DESIGNATION\n// =======================================\n\nnew Chart(\n\n  document.getElementById(\n    'designationChart'\n  ),\n\n  {\n\n    type: 'bar',\n\n    data: {\n\n      labels:\n        designationData.map(\n          x => x.designation\n        ),\n\n      datasets: [{\n\n        label: 'Records',\n\n        data:\n          designationData.map(\n            x => Number(x.count || 0)\n          )\n\n      }]\n\n    },\n\n    options: {\n\n      responsive: true,\n\n      maintainAspectRatio: false,\n\n      plugins: {\n\n        legend: {\n\n          display: false\n\n        }\n\n      }\n\n    }\n\n  }\n\n);\n\n</script>\n\n</body>\n\n</html>`;\n\n// Return HTML\nreturn [\n  {\n    json: {\n      html: html\n    }\n  }\n];"
+      },
+      "id": "ced10244-0be9-4cc2-8bc1-975cf6df3927",
+      "name": "Final Dashboard1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=UTF-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "79ce8e59-5ce5-4e7d-a850-5bbf8ff9b926",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        304,
+        -384
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Code in Python",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Department Distribution",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "stateMapping",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Entries Over Time banate hain",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "State × Department Analysis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Designation / Role Distribution",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Data Validation Overview",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "General KPI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "State-wise Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Department Distribution": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "stateMapping": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Entries Over Time banate hain": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "State × Department Analysis": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Designation / Role Distribution": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Data Validation Overview": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "General KPI": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "State-wise Records": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 7
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Insert row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert row": {
+      "main": [
+        [
+          {
+            "node": "Get All Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Records": {
+      "main": [
+        [
+          {
+            "node": "Format Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Dataset": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Final Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Final Dashboard1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Dashboard1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f189ef8b-251c-4c87-b98e-b7806b220eb6",
+  "meta": {
+    "instanceId": "238a3815e1330664bf0b2e21463f4288c6b4ab3b0da04d2cf739c6ca426fe3b0"
+  },
+  "nodeGroups": [],
+  "id": "zEHZ1ZWIaYUwVrDx",
+  "tags": []
+}
