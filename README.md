@@ -152,3 +152,8 @@ The project creates an automated pipeline that converts raw form submissions int
 ## 🖥️ Dashboard Screenshot 5
 
 ![Dashboard Screenshot 5](./Screenshot%202026-09-20%20040722.png)
+## ⚙️ n8n Workflow
+
+The complete n8n automation workflow is available below:
+
+[Download n8n Workflow JSON](n8n/daily-express-analytics-workflow.json)
