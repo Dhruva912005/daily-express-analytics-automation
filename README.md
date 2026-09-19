@@ -100,3 +100,42 @@ The project creates an automated pipeline that converts raw form submissions int
                     ▼         ▼
                   CSV       Email
                 Dataset     Report
+```
+
+# 🖼️ Project Screenshots
+
+## Complete n8n Workflow
+
+![Complete n8n Workflow](./Screenshot%202026-09-20%20032347.png)
+
+---
+
+## 📧 Data Collection & Email Automation
+
+![Data Collection and Email Automation](./Screenshot%202026-09-20%20032353.png)
+
+---
+
+## 📊 Dashboard Analytics Workflow
+
+![Dashboard Analytics Workflow](./Screenshot%202026-09-20%20032430.png)
+
+---
+
+# 🖥️ Dashboard Screenshots
+
+## Dashboard Screenshot 1
+
+![Dashboard Screenshot 1](./Screenshot%202026-09-20%20035259.png)
+
+---
+
+## Dashboard Screenshot 2
+
+![Dashboard Screenshot 2](./Screenshot%202026-09-20%20035311.png)
+
+---
+
+## Dashboard Screenshot 3
+
+![Dashboard Screenshot 3](./Screenshot%202026-09-20%20035332.png)
